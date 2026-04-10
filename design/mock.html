@@ -1,0 +1,457 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Blade Vortex Snapshot Tracker - HUD mock</title>
+<style>
+  :root {
+    --bg: #0a0d14;
+    --bg-2: #10141d;
+    --bg-3: #161b26;
+    --border: #5a4b1a;
+    --border-dim: #3a3314;
+    --gold: #c9a64a;
+    --gold-bright: #f2d37a;
+    --alive: #5fe07a;
+    --warn: #e0c83a;
+    --danger: #e04040;
+    --muted: #8892a6;
+    --text: #e8eaf0;
+    --cluster-a: #6aa9ff;
+    --cluster-b: #ff9a5a;
+  }
+
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0;
+    padding: 0;
+    background:
+      radial-gradient(1200px 600px at 30% 20%, #12161f 0%, #05070b 70%) no-repeat,
+      #05070b;
+    color: var(--text);
+    font-family: Consolas, "DejaVu Sans Mono", "Courier New", monospace;
+    min-height: 100vh;
+  }
+
+  .page {
+    padding: 48px;
+    display: flex;
+    gap: 48px;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    justify-content: center;
+  }
+
+  .caption {
+    font-family: "Trebuchet MS", "Segoe UI", sans-serif;
+    font-size: 10px;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin: 0 0 10px 2px;
+  }
+
+  /* ---------- PANEL FRAME ---------- */
+  .panel {
+    width: 400px;
+    background: linear-gradient(180deg, var(--bg-2) 0%, var(--bg) 100%);
+    border: 1px solid var(--border);
+    box-shadow:
+      0 0 0 1px #000 inset,
+      0 0 24px rgba(0, 0, 0, 0.75),
+      0 0 0 1px rgba(201, 166, 74, 0.08);
+    position: relative;
+    padding: 10px 12px 12px 12px;
+    image-rendering: pixelated;
+  }
+
+  /* corner ticks */
+  .panel::before,
+  .panel::after {
+    content: "";
+    position: absolute;
+    width: 10px;
+    height: 10px;
+    border: 1px solid var(--gold);
+  }
+  .panel::before { top: -1px; left: -1px; border-right: none; border-bottom: none; }
+  .panel::after  { bottom: -1px; right: -1px; border-left: none; border-top: none; }
+
+  /* ---------- HEADER ---------- */
+  .hdr {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--border-dim);
+  }
+  .hdr-title {
+    font-family: "Trebuchet MS", "Segoe UI", sans-serif;
+    font-size: 10px;
+    letter-spacing: 0.28em;
+    text-transform: uppercase;
+    color: var(--gold);
+  }
+  .hdr-title .sub {
+    color: var(--muted);
+    letter-spacing: 0.18em;
+    font-size: 9px;
+    display: block;
+    margin-top: 2px;
+  }
+
+  .chip {
+    font-family: "Trebuchet MS", "Segoe UI", sans-serif;
+    font-size: 10px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    padding: 4px 8px;
+    border: 1px solid currentColor;
+    background: rgba(0, 0, 0, 0.35);
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    white-space: nowrap;
+  }
+  .chip .dot {
+    width: 6px;
+    height: 6px;
+    background: currentColor;
+    box-shadow: 0 0 6px currentColor;
+  }
+  .chip.alive { color: var(--alive); }
+  .chip.lost  { color: var(--danger); animation: pulse-red 1.1s ease-in-out infinite; }
+  @keyframes pulse-red {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(224, 64, 64, 0.55), 0 0 0 1px #000 inset; }
+    50%      { box-shadow: 0 0 12px 2px rgba(224, 64, 64, 0.65), 0 0 0 1px #000 inset; }
+  }
+
+  .meta {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 2px;
+    font-size: 11px;
+  }
+  .meta .big {
+    color: var(--text);
+    letter-spacing: 0.04em;
+  }
+  .meta .small {
+    color: var(--muted);
+    font-size: 9px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    font-family: "Trebuchet MS", "Segoe UI", sans-serif;
+  }
+
+  /* ---------- SEAL ROW ---------- */
+  .seal-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 2px 10px 2px;
+    border-bottom: 1px solid var(--border-dim);
+  }
+  .seal-label {
+    font-family: "Trebuchet MS", "Segoe UI", sans-serif;
+    font-size: 9px;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+  .pips {
+    display: flex;
+    gap: 4px;
+  }
+  .pip {
+    width: 10px;
+    height: 10px;
+    border: 1px solid var(--gold);
+    background: #000;
+    position: relative;
+  }
+  .pip.on {
+    background: linear-gradient(180deg, #fff3c4 0%, var(--gold-bright) 45%, var(--gold) 100%);
+    box-shadow: 0 0 6px rgba(242, 211, 122, 0.7);
+  }
+  .seal-count {
+    margin-left: auto;
+    color: var(--muted);
+    font-size: 10px;
+  }
+  .seal-count b { color: var(--gold-bright); }
+
+  /* ---------- CLUSTER ---------- */
+  .clusters { padding-top: 8px; display: flex; flex-direction: column; gap: 10px; }
+
+  .cluster {
+    border: 1px solid var(--border-dim);
+    background: rgba(0, 0, 0, 0.3);
+    padding: 7px 8px 8px 8px;
+    position: relative;
+  }
+  .cluster.warn {
+    border-color: rgba(224, 200, 58, 0.55);
+    background:
+      linear-gradient(90deg, rgba(224, 200, 58, 0.07), rgba(0, 0, 0, 0.3) 60%),
+      rgba(0, 0, 0, 0.3);
+    box-shadow: inset 0 0 14px rgba(224, 200, 58, 0.15);
+  }
+
+  .cluster-hdr {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 10px;
+    font-family: "Trebuchet MS", "Segoe UI", sans-serif;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 6px;
+  }
+  .swatch {
+    width: 8px;
+    height: 8px;
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    flex: 0 0 auto;
+  }
+  .cluster-hdr .name { color: var(--text); letter-spacing: 0.18em; }
+  .cluster-hdr .sep { color: var(--border); }
+  .cluster-hdr .count { color: var(--gold-bright); font-family: Consolas, monospace; letter-spacing: 0; }
+  .warn-chip {
+    margin-left: auto;
+    font-family: "Trebuchet MS", "Segoe UI", sans-serif;
+    font-size: 9px;
+    letter-spacing: 0.18em;
+    color: var(--warn);
+    border: 1px solid var(--warn);
+    padding: 1px 5px;
+    background: rgba(224, 200, 58, 0.08);
+    animation: blink 1.4s steps(2, end) infinite;
+  }
+  @keyframes blink { 50% { opacity: 0.35; } }
+
+  /* bars */
+  .bars { display: flex; flex-direction: column; gap: 3px; }
+  .bar {
+    position: relative;
+    height: 11px;
+    background: #050709;
+    border: 1px solid #23283550;
+    overflow: hidden;
+  }
+  .bar .fill {
+    position: absolute;
+    inset: 0 auto 0 0;
+    background: linear-gradient(90deg, #2c6e36 0%, var(--alive) 50%, #9ef1b2 100%);
+    box-shadow: inset 0 0 6px rgba(255, 255, 255, 0.12);
+  }
+  .bar.warn .fill {
+    background: linear-gradient(90deg, #7a6b18 0%, var(--warn) 55%, #fff0a0 100%);
+  }
+  .bar.danger .fill {
+    background: linear-gradient(90deg, #7a1e1e 0%, var(--danger) 55%, #ffb0b0 100%);
+  }
+  .bar .tick-grid {
+    position: absolute; inset: 0;
+    background-image: repeating-linear-gradient(
+      90deg,
+      transparent 0, transparent 24%,
+      rgba(255,255,255,0.05) 24%, rgba(255,255,255,0.05) 25%
+    );
+    pointer-events: none;
+  }
+  .bar .lbl {
+    position: absolute;
+    right: 6px; top: 50%;
+    transform: translateY(-50%);
+    font-family: Consolas, monospace;
+    font-size: 9px;
+    color: #fff;
+    text-shadow: 0 0 3px #000, 0 1px 0 #000;
+    letter-spacing: 0.02em;
+  }
+
+  /* ---------- FOOTER ---------- */
+  .foot {
+    margin-top: 10px;
+    padding-top: 8px;
+    border-top: 1px solid var(--border-dim);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-family: "Trebuchet MS", "Segoe UI", sans-serif;
+    font-size: 9px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+  .foot .hot {
+    color: var(--warn);
+    font-family: Consolas, monospace;
+    font-size: 11px;
+    letter-spacing: 0;
+  }
+
+  /* ---------- LOST STATE ---------- */
+  .panel.lost {
+    border-color: #5a1a1a;
+    box-shadow:
+      0 0 0 1px #000 inset,
+      0 0 28px rgba(224, 64, 64, 0.18),
+      0 0 0 1px rgba(224, 64, 64, 0.08);
+    animation: frame-flicker 2s ease-in-out infinite;
+  }
+  .panel.lost::before, .panel.lost::after { border-color: var(--danger); }
+  @keyframes frame-flicker {
+    0%, 100% { filter: brightness(1); }
+    50%      { filter: brightness(1.15); }
+  }
+  .empty {
+    padding: 28px 10px 24px 10px;
+    text-align: center;
+  }
+  .empty .big {
+    font-family: "Trebuchet MS", "Segoe UI", sans-serif;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    color: var(--danger);
+    font-size: 12px;
+    margin-bottom: 10px;
+  }
+  .empty .hint {
+    font-size: 10px;
+    color: var(--muted);
+    line-height: 1.55;
+    max-width: 280px;
+    margin: 0 auto;
+    letter-spacing: 0.04em;
+  }
+  .empty .hint b { color: var(--text); }
+</style>
+</head>
+<body>
+  <div class="page">
+
+    <!-- ========================= STATE A: ALIVE ========================= -->
+    <div>
+      <div class="caption">State A - Snapshot alive</div>
+      <div class="panel">
+
+        <div class="hdr">
+          <div class="hdr-title">
+            Blade Vortex Snapshot
+            <span class="sub">Minion Pact tracker</span>
+          </div>
+          <div class="chip alive"><span class="dot"></span>Snapshot Alive</div>
+        </div>
+
+        <div class="seal-row">
+          <span class="seal-label">Unleash Seals</span>
+          <div class="pips">
+            <div class="pip on"></div>
+            <div class="pip on"></div>
+            <div class="pip on"></div>
+            <div class="pip"></div>
+          </div>
+          <span class="seal-count"><b>3</b>/4</span>
+        </div>
+
+        <div class="seal-row" style="border-bottom:none;padding-bottom:4px;">
+          <span class="seal-label">Blades</span>
+          <span style="font-family:Consolas,monospace;font-size:11px;color:var(--text);">7<span style="color:var(--muted)">/10</span></span>
+          <span class="seal-count">earliest <b style="color:var(--warn)">1.4s</b></span>
+        </div>
+
+        <div class="clusters">
+
+          <!-- CLUSTER A -->
+          <div class="cluster">
+            <div class="cluster-hdr">
+              <div class="swatch" style="background:var(--cluster-a);"></div>
+              <span class="name">Cluster A</span>
+              <span class="sep">//</span>
+              <span>cast 0.0s ago</span>
+              <span class="sep">//</span>
+              <span class="count">3 blades</span>
+            </div>
+            <div class="bars">
+              <div class="bar"><div class="fill" style="width:95%"></div><div class="tick-grid"></div><div class="lbl">3.8s</div></div>
+              <div class="bar"><div class="fill" style="width:95%"></div><div class="tick-grid"></div><div class="lbl">3.8s</div></div>
+              <div class="bar"><div class="fill" style="width:95%"></div><div class="tick-grid"></div><div class="lbl">3.8s</div></div>
+            </div>
+          </div>
+
+          <!-- CLUSTER B (warn) -->
+          <div class="cluster warn">
+            <div class="cluster-hdr">
+              <div class="swatch" style="background:var(--cluster-b);"></div>
+              <span class="name">Cluster B</span>
+              <span class="sep">//</span>
+              <span>cast 2.6s ago</span>
+              <span class="sep">//</span>
+              <span class="count">4 blades</span>
+              <span class="warn-chip">! Next loss</span>
+            </div>
+            <div class="bars">
+              <div class="bar warn"><div class="fill" style="width:35%"></div><div class="tick-grid"></div><div class="lbl">1.4s</div></div>
+              <div class="bar warn"><div class="fill" style="width:35%"></div><div class="tick-grid"></div><div class="lbl">1.4s</div></div>
+              <div class="bar warn"><div class="fill" style="width:35%"></div><div class="tick-grid"></div><div class="lbl">1.4s</div></div>
+              <div class="bar warn"><div class="fill" style="width:35%"></div><div class="tick-grid"></div><div class="lbl">1.4s</div></div>
+            </div>
+          </div>
+
+        </div>
+
+        <div class="foot">
+          <span>Next loss</span>
+          <span class="hot">4 blades in 1.4s</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- ========================= STATE B: LOST ========================= -->
+    <div>
+      <div class="caption">State B - Snapshot lost</div>
+      <div class="panel lost">
+
+        <div class="hdr">
+          <div class="hdr-title">
+            Blade Vortex Snapshot
+            <span class="sub">Minion Pact tracker</span>
+          </div>
+          <div class="chip lost"><span class="dot"></span>Snapshot Lost</div>
+        </div>
+
+        <div class="seal-row">
+          <span class="seal-label">Unleash Seals</span>
+          <div class="pips">
+            <div class="pip on"></div>
+            <div class="pip on"></div>
+            <div class="pip on"></div>
+            <div class="pip on"></div>
+          </div>
+          <span class="seal-count"><b>4</b>/4</span>
+        </div>
+
+        <div class="empty">
+          <div class="big">All blades expired</div>
+          <div class="hint">
+            Zone to reset your specter and re-snapshot.<br/>
+            <b>Casting now</b> will create a new instance
+            without the Minion Pact damage baseline.
+          </div>
+        </div>
+
+        <div class="foot">
+          <span>Snapshot</span>
+          <span class="hot" style="color:var(--danger)">LOST 0.4s ago</span>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</body>
+</html>
