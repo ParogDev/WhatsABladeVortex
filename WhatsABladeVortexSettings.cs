@@ -52,6 +52,12 @@ public sealed class WhatsABladeVortexSettings : ISettings
     [Menu("Snapshot-lost: red header", "Flip the header to red SNAPSHOT LOST text.", 302, 300)]
     public ToggleNode AlertRedHeader { get; set; } = new(true);
 
+    [Menu("Snapshot-lost: sound alert", "Play a .wav sound when all blades expire.", 303, 300)]
+    public ToggleNode AlertSound { get; set; } = new(true);
+
+    [Menu("Sound file", "Wav file in PoeHelper/Sounds/ (without extension).", 304, 300)]
+    public TextNode SoundFile { get; set; } = new("snapshot_lost");
+
     // -- Colors --
     [Menu("Colors", 400)]
     public EmptyNode ColorsHeader { get; set; }

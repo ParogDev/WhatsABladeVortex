@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Numerics;
 using ExileCore;
@@ -203,6 +204,7 @@ public sealed class WhatsABladeVortex : BaseSettingsPlugin<WhatsABladeVortexSett
                 {
                     _snapshotState = SnapshotState.Lost;
                     _snapshotLostAt = DateTime.UtcNow;
+                    TryPlaySnapshotLostSound();
                 }
                 break;
 
@@ -272,6 +274,23 @@ public sealed class WhatsABladeVortex : BaseSettingsPlugin<WhatsABladeVortexSett
     {
         _settingsUi ??= new BladeVortexSettingsUi();
         _settingsUi.Draw(Settings, Graphics, _renderState);
+    }
+
+    private void TryPlaySnapshotLostSound()
+    {
+        if (!Settings.AlertSound.Value)
+            return;
+
+        var file = Settings.SoundFile.Value?.Trim();
+        if (string.IsNullOrWhiteSpace(file))
+            return;
+
+        var name = Path.GetFileNameWithoutExtension(file);
+        if (string.IsNullOrWhiteSpace(name))
+            return;
+
+        var soundPath = Path.Combine("..", "Sounds", name).Replace('\\', '/');
+        GameController.SoundController.PlaySound(soundPath);
     }
 
     private void DrawEdgeFlash(float intensity)
