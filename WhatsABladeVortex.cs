@@ -15,46 +15,64 @@ namespace WhatsABladeVortex;
 
 public enum SnapshotState { Ready, Active, Lost }
 
+/// <summary>
+/// All data needed by the renderer, built once per Tick.
+/// Passed to both the overlay renderer and the settings UI.
+/// </summary>
+public sealed class BladeVortexRenderState
+{
+    // Seals
+    public int SealCount;
+
+    // Snapshot
+    public SnapshotState SnapshotState;
+    public DateTime SnapshotLostAt;
+
+    // Cluster bar data (compact mode)
+    public float LatestClusterTimer;
+    public float LatestClusterMaxTime;
+    public int LatestClusterBladeCount;
+    public float SecondClusterTimer;
+    public float SecondClusterMaxTime;
+    public int SecondClusterBladeCount;
+
+    // Spectre
+    public bool SpectreFound;
+    public bool SpectreAlive;
+    public int SpectreMaxHp;
+    public float SpectreHpPct;
+
+    // Minion Pact
+    public bool HasMinionPact;
+    public int MinionPactPermillage;
+    public int CalculatedAddedPhys;
+
+    // Blade totals
+    public int BladeCount;
+
+    // Tracker reference (for full panel cluster iteration)
+    public BladeTracker Tracker = null!;
+}
+
 public sealed class WhatsABladeVortex : BaseSettingsPlugin<WhatsABladeVortexSettings>
 {
     private readonly BladeTracker _tracker = new();
     private readonly SnapshotPanelRenderer _renderer = new();
+    private readonly BladeVortexRenderState _renderState = new();
     private readonly List<(float timer, float maxTime)> _rawBlades = new();
 
-    // Unleash seals
-    private int _sealCount;
-
-    // Freshest blade (for debug display)
-    private float _freshestTimer;
-    private float _freshestMaxTime;
-
-    // Latest cluster bar (main bar - newest cast cluster's fall-off)
-    private float _latestClusterTimer;
-    private float _latestClusterMaxTime;
-    private int _latestClusterBladeCount;
-
-    // 2nd latest cluster bar (small bar - previous cast cluster's fall-off)
-    private float _secondClusterTimer;
-    private float _secondClusterMaxTime;
-    private int _secondClusterBladeCount;
-
-    // Spectre tracking (cached in Tick)
+    // Snapshot state machine
     private SnapshotState _snapshotState = SnapshotState.Ready;
-    private bool _spectreAlive;
     private bool _prevSpectreAlive;
-    private bool _spectreFound;
     private int _spectreMaxHp;
-    private float _spectreHpPct;
-
-    // Minion Pact detection (cached in Tick)
-    private bool _hasMinionPact;
-    private int _minionPactPermillage;
-    private int _calculatedAddedPhys;
-
-    // Alerts
     private DateTime _snapshotLostAt = DateTime.MinValue;
+
+    // Render guards
     private bool _canRender;
     private bool _inGracePeriod;
+
+    // Custom settings UI
+    private BladeVortexSettingsUi? _settingsUi;
 
     public override bool Initialise()
     {
@@ -66,23 +84,8 @@ public sealed class WhatsABladeVortex : BaseSettingsPlugin<WhatsABladeVortexSett
     {
         _snapshotState = SnapshotState.Ready;
         _prevSpectreAlive = false;
-        _spectreAlive = false;
-        _spectreFound = false;
         _spectreMaxHp = 0;
-        _spectreHpPct = 0f;
-        _hasMinionPact = false;
-        _minionPactPermillage = 0;
-        _calculatedAddedPhys = 0;
         _snapshotLostAt = DateTime.MinValue;
-        _freshestTimer = 0f;
-        _freshestMaxTime = 0f;
-        _latestClusterTimer = 0f;
-        _latestClusterMaxTime = 0f;
-        _latestClusterBladeCount = 0;
-        _secondClusterTimer = 0f;
-        _secondClusterMaxTime = 0f;
-        _secondClusterBladeCount = 0;
-        _sealCount = 0;
         _rawBlades.Clear();
         _tracker.Rebuild(_rawBlades, 0.15f);
     }
@@ -111,8 +114,6 @@ public sealed class WhatsABladeVortex : BaseSettingsPlugin<WhatsABladeVortexSett
 
         // -- Read buffs --
         int seals = 0;
-        float freshestTimer = 0f;
-        float freshestMaxTime = 0f;
         bool hasDeadSpectreBuff = false;
         _rawBlades.Clear();
 
@@ -129,11 +130,6 @@ public sealed class WhatsABladeVortex : BaseSettingsPlugin<WhatsABladeVortexSett
 
                 case "new_new_blade_vortex":
                     _rawBlades.Add((b.Timer, b.MaxTime));
-                    if (b.Timer > freshestTimer)
-                    {
-                        freshestTimer = b.Timer;
-                        freshestMaxTime = b.MaxTime;
-                    }
                     break;
 
                 case "number_of_orb_spectres":
@@ -142,39 +138,35 @@ public sealed class WhatsABladeVortex : BaseSettingsPlugin<WhatsABladeVortexSett
             }
         }
 
-        _sealCount = seals;
-        _freshestTimer = freshestTimer;
-        _freshestMaxTime = freshestMaxTime;
-
         // -- Always rebuild clusters (compact mode needs cluster-bar data) --
         float clusterWindow = Settings.ClusterWindowMs.Value / 1000f;
         _tracker.Rebuild(_rawBlades, clusterWindow);
         _tracker.FindClusterBars(
-            out _latestClusterTimer, out _latestClusterMaxTime, out _latestClusterBladeCount,
-            out _secondClusterTimer, out _secondClusterMaxTime, out _secondClusterBladeCount);
+            out var latestTimer, out var latestMaxTime, out var latestBladeCount,
+            out var secondTimer, out var secondMaxTime, out var secondBladeCount);
 
         // -- Spectre + Minion Pact detection via Actor --
+        bool spectreAlive = false;
+        bool spectreFound = false;
+        float spectreHpPct = 0f;
+        bool hasMinionPact = false;
+        int minionPactPermillage = 0;
+
         var actor = player.GetComponent<Actor>();
         if (actor != null)
         {
-            // Minion Pact stat on BV skill
             var bvSkill = actor.ActorSkills?.FirstOrDefault(s => s.InternalName == "blade_vortex");
-            _minionPactPermillage = bvSkill?.GetStat(
+            minionPactPermillage = bvSkill?.GetStat(
                 GameStat.SupportMinionPactSacrificeNearbyDamageableMinionToGainPermillageOfMaxLifeAsPhysicalDamage) ?? 0;
-            _hasMinionPact = _minionPactPermillage > 0;
+            hasMinionPact = minionPactPermillage > 0;
 
-            // Spectre alive = no "Dead Spectre" buff present.
-            // The buff is authoritative; DeployedObjects.Entity.IsAlive is unreliable
-            // (wisp entity still reports alive).
-            _spectreAlive = !hasDeadSpectreBuff;
+            spectreAlive = !hasDeadSpectreBuff;
 
-            // Read spectre HP from DeployedObjects when alive (for damage calc)
             var spectreSkill = actor.ActorSkills?.FirstOrDefault(s => s.InternalName == "raise_spectre");
             var deployed = spectreSkill?.DeployedObjects;
-            _spectreFound = deployed != null && deployed.Count > 0;
-            float bestHpPct = 0f;
+            spectreFound = deployed != null && deployed.Count > 0;
 
-            if (deployed != null && _spectreAlive)
+            if (deployed != null && spectreAlive)
             {
                 foreach (var d in deployed)
                 {
@@ -184,21 +176,16 @@ public sealed class WhatsABladeVortex : BaseSettingsPlugin<WhatsABladeVortexSett
                     if (life != null)
                     {
                         int hp = life.MaxHP;
-                        // Life returns 1 when component address is null;
-                        // only update if we get a real value (> 1)
                         if (hp > 1)
                             _spectreMaxHp = hp;
-                        bestHpPct = life.HPPercentage;
+                        spectreHpPct = life.HPPercentage;
                     }
                 }
             }
-
-            _spectreHpPct = bestHpPct;
         }
 
-        // Damage calculation (use last known max HP even if spectre is dead)
-        _calculatedAddedPhys = _hasMinionPact && _spectreMaxHp > 0
-            ? _spectreMaxHp * _minionPactPermillage / 1000
+        int calculatedAddedPhys = hasMinionPact && _spectreMaxHp > 0
+            ? _spectreMaxHp * minionPactPermillage / 1000
             : 0;
 
         // -- Snapshot state machine --
@@ -207,13 +194,11 @@ public sealed class WhatsABladeVortex : BaseSettingsPlugin<WhatsABladeVortexSett
         switch (_snapshotState)
         {
             case SnapshotState.Ready:
-                // Waiting for spectre sacrifice: was alive last tick, now dead, and blades exist
-                if (_prevSpectreAlive && !_spectreAlive && hasBlades)
+                if (_prevSpectreAlive && !spectreAlive && hasBlades)
                     _snapshotState = SnapshotState.Active;
                 break;
 
             case SnapshotState.Active:
-                // Blades carry snapshotted damage; lost when all expire
                 if (!hasBlades)
                 {
                     _snapshotState = SnapshotState.Lost;
@@ -222,13 +207,33 @@ public sealed class WhatsABladeVortex : BaseSettingsPlugin<WhatsABladeVortexSett
                 break;
 
             case SnapshotState.Lost:
-                // Spectre resurrects -> ready to sacrifice again
-                if (_spectreAlive)
+                if (spectreAlive)
                     _snapshotState = SnapshotState.Ready;
                 break;
         }
 
-        _prevSpectreAlive = _spectreAlive;
+        _prevSpectreAlive = spectreAlive;
+
+        // -- Build render state DTO --
+        _renderState.SealCount = seals;
+        _renderState.SnapshotState = _snapshotState;
+        _renderState.SnapshotLostAt = _snapshotLostAt;
+        _renderState.LatestClusterTimer = latestTimer;
+        _renderState.LatestClusterMaxTime = latestMaxTime;
+        _renderState.LatestClusterBladeCount = latestBladeCount;
+        _renderState.SecondClusterTimer = secondTimer;
+        _renderState.SecondClusterMaxTime = secondMaxTime;
+        _renderState.SecondClusterBladeCount = secondBladeCount;
+        _renderState.SpectreFound = spectreFound;
+        _renderState.SpectreAlive = spectreAlive;
+        _renderState.SpectreMaxHp = _spectreMaxHp;
+        _renderState.SpectreHpPct = spectreHpPct;
+        _renderState.HasMinionPact = hasMinionPact;
+        _renderState.MinionPactPermillage = minionPactPermillage;
+        _renderState.CalculatedAddedPhys = calculatedAddedPhys;
+        _renderState.BladeCount = _rawBlades.Count;
+        _renderState.Tracker = _tracker;
+
         _canRender = true;
         return null;
     }
@@ -246,40 +251,27 @@ public sealed class WhatsABladeVortex : BaseSettingsPlugin<WhatsABladeVortexSett
         }
 
         // Edge flash on snapshot lost
-        if (Settings.AlertEdgeFlash.Value && _snapshotLostAt != DateTime.MinValue)
+        if (Settings.AlertEdgeFlash.Value && _renderState.SnapshotLostAt != DateTime.MinValue)
         {
-            var elapsed = (float)(DateTime.UtcNow - _snapshotLostAt).TotalSeconds;
+            var elapsed = (float)(DateTime.UtcNow - _renderState.SnapshotLostAt).TotalSeconds;
             const float dur = 0.6f;
             if (elapsed < dur)
                 DrawEdgeFlash(1f - elapsed / dur);
         }
 
         if (Settings.ShowFullPanel.Value)
-        {
-            _renderer.DrawFullPanel(Graphics, Settings, _tracker, _sealCount,
-                _snapshotState, _spectreAlive, _hasMinionPact, _calculatedAddedPhys,
-                _minionPactPermillage);
-        }
+            _renderer.DrawFullPanel(Graphics, Settings, _renderState);
         else
-        {
-            _renderer.DrawCompact(Graphics, Settings, _sealCount, _snapshotState,
-                _latestClusterTimer, _latestClusterMaxTime, _latestClusterBladeCount,
-                _secondClusterTimer, _secondClusterMaxTime, _secondClusterBladeCount,
-                _hasMinionPact, _spectreAlive);
-        }
+            _renderer.DrawCompact(Graphics, Settings, _renderState);
 
-        // Debug window (independent of panel mode)
         if (Settings.ShowDebugWindow.Value)
-        {
-            _renderer.DrawDebugWindow(Graphics, Settings,
-                _spectreFound, _spectreAlive, _spectreMaxHp, _spectreHpPct,
-                _hasMinionPact, _minionPactPermillage, _calculatedAddedPhys,
-                _snapshotState,
-                _rawBlades.Count, _tracker.Clusters.Count,
-                _latestClusterTimer, _latestClusterBladeCount,
-                _secondClusterTimer, _secondClusterBladeCount,
-                _sealCount);
-        }
+            _renderer.DrawDebugWindow(Graphics, Settings, _renderState);
+    }
+
+    public override void DrawSettings()
+    {
+        _settingsUi ??= new BladeVortexSettingsUi();
+        _settingsUi.Draw(Settings, Graphics, _renderState);
     }
 
     private void DrawEdgeFlash(float intensity)

@@ -10,28 +10,49 @@ public sealed class BladeInfo
     public int ClusterId;
 
     public float Fraction => MaxTime > 0f ? Math.Clamp(Timer / MaxTime, 0f, 1f) : 0f;
+
+    public void Reset()
+    {
+        Timer = 0f;
+        MaxTime = 0f;
+        ClusterId = 0;
+    }
 }
 
 public sealed class BladeCluster
 {
     public int Id;
-    public readonly List<BladeInfo> Blades = new();
+    public int BladeCount;
+    private readonly List<BladeInfo> _blades = new();
+
+    public IReadOnlyList<BladeInfo> Blades => _blades;
+
+    public void Reset()
+    {
+        Id = 0;
+        BladeCount = 0;
+        _blades.Clear();
+    }
+
+    public void AddBlade(BladeInfo blade)
+    {
+        _blades.Add(blade);
+        BladeCount = _blades.Count;
+    }
 
     public float EarliestTimer()
     {
         float min = float.MaxValue;
-        foreach (var b in Blades)
+        foreach (var b in _blades)
             if (b.Timer < min) min = b.Timer;
         return min == float.MaxValue ? 0f : min;
     }
 
     public float CastAgoSeconds()
     {
-        // The blade with the highest timer was cast most recently in this cluster.
-        // "Cast ago" = maxTime - highestTimer
         float maxTimer = 0f;
         float maxTime = 0f;
-        foreach (var b in Blades)
+        foreach (var b in _blades)
         {
             if (b.Timer > maxTimer)
             {
@@ -45,15 +66,32 @@ public sealed class BladeCluster
 
 /// <summary>
 /// Builds blade clusters from the player's buff list every tick.
+/// Uses object pooling to avoid per-frame allocations.
 /// No persistent state -- rebuilt from scratch each frame from buff reads.
 /// </summary>
 public sealed class BladeTracker
 {
-    private readonly List<BladeInfo> _blades = new();
-    private readonly List<BladeCluster> _clusters = new();
+    private const int MaxBlades = 10;
+    private const int MaxClusters = 10;
 
-    public IReadOnlyList<BladeCluster> Clusters => _clusters;
-    public int BladeCount => _blades.Count;
+    private readonly BladeInfo[] _bladePool = new BladeInfo[MaxBlades];
+    private readonly BladeCluster[] _clusterPool = new BladeCluster[MaxClusters];
+    private int _bladeCount;
+    private int _clusterCount;
+
+    public int BladeCount => _bladeCount;
+    public int ClusterCount => _clusterCount;
+
+    public BladeTracker()
+    {
+        for (int i = 0; i < MaxBlades; i++)
+            _bladePool[i] = new BladeInfo();
+        for (int i = 0; i < MaxClusters; i++)
+            _clusterPool[i] = new BladeCluster();
+    }
+
+    /// <summary>Active clusters (valid indices 0.._clusterCount-1).</summary>
+    public BladeCluster GetCluster(int index) => _clusterPool[index];
 
     /// <summary>
     /// Rebuild from a list of (timer, maxTime) tuples extracted from all
@@ -61,8 +99,13 @@ public sealed class BladeTracker
     /// </summary>
     public void Rebuild(List<(float timer, float maxTime)> rawBlades, float clusterWindowSeconds)
     {
-        _blades.Clear();
-        _clusters.Clear();
+        // Reset pools
+        for (int i = 0; i < _bladeCount; i++)
+            _bladePool[i].Reset();
+        for (int i = 0; i < _clusterCount; i++)
+            _clusterPool[i].Reset();
+        _bladeCount = 0;
+        _clusterCount = 0;
 
         if (rawBlades.Count == 0) return;
 
@@ -74,27 +117,34 @@ public sealed class BladeTracker
 
         foreach (var (timer, maxTime) in rawBlades)
         {
-            var blade = new BladeInfo { Timer = timer, MaxTime = maxTime };
-            _blades.Add(blade);
+            if (_bladeCount >= MaxBlades) break;
+
+            var blade = _bladePool[_bladeCount++];
+            blade.Timer = timer;
+            blade.MaxTime = maxTime;
 
             // Start a new cluster if this blade's timer is more than the window
             // below the previous blade's timer (i.e. it was cast noticeably earlier).
-            if (current == null || (current.Blades[^1].Timer - timer) > clusterWindowSeconds)
+            bool newCluster = current == null ||
+                (current.Blades[current.BladeCount - 1].Timer - timer) > clusterWindowSeconds;
+
+            if (newCluster)
             {
-                current = new BladeCluster { Id = clusterId++ };
-                _clusters.Add(current);
+                if (_clusterCount >= MaxClusters) break;
+                current = _clusterPool[_clusterCount++];
+                current.Id = clusterId++;
             }
 
-            blade.ClusterId = current.Id;
-            current.Blades.Add(blade);
+            blade.ClusterId = current!.Id;
+            current.AddBlade(blade);
         }
     }
 
     public float EarliestTimer()
     {
         float min = float.MaxValue;
-        foreach (var b in _blades)
-            if (b.Timer < min) min = b.Timer;
+        for (int i = 0; i < _bladeCount; i++)
+            if (_bladePool[i].Timer < min) min = _bladePool[i].Timer;
         return min == float.MaxValue ? 0f : min;
     }
 
@@ -104,14 +154,15 @@ public sealed class BladeTracker
         expiresIn = 0f;
         float minEarliest = float.MaxValue;
         BladeCluster? warn = null;
-        foreach (var c in _clusters)
+        for (int i = 0; i < _clusterCount; i++)
         {
+            var c = _clusterPool[i];
             var e = c.EarliestTimer();
             if (e < minEarliest) { minEarliest = e; warn = c; }
         }
         if (warn != null)
         {
-            clusterBladeCount = warn.Blades.Count;
+            clusterBladeCount = warn.BladeCount;
             expiresIn = warn.EarliestTimer();
         }
     }
@@ -119,7 +170,6 @@ public sealed class BladeTracker
     /// <summary>
     /// Returns the two most recent clusters' earliest-blade timers for the two-bar UI.
     /// Clusters are sorted newest-first (highest timer), so index 0 = latest cast.
-    /// "Fall off" = earliest blade in each cluster (when the cluster starts losing blades).
     /// </summary>
     public void FindClusterBars(
         out float latestTimer, out float latestMaxTime, out int latestBladeCount,
@@ -128,20 +178,19 @@ public sealed class BladeTracker
         latestTimer = 0f; latestMaxTime = 0f; latestBladeCount = 0;
         secondTimer = 0f; secondMaxTime = 0f; secondBladeCount = 0;
 
-        if (_clusters.Count == 0) return;
+        if (_clusterCount == 0) return;
 
-        // Clusters[0] is the newest (sorted by timer descending in Rebuild)
-        var c0 = _clusters[0];
+        var c0 = _clusterPool[0];
         latestTimer = c0.EarliestTimer();
         latestMaxTime = c0.Blades[0].MaxTime;
-        latestBladeCount = c0.Blades.Count;
+        latestBladeCount = c0.BladeCount;
 
-        if (_clusters.Count >= 2)
+        if (_clusterCount >= 2)
         {
-            var c1 = _clusters[1];
+            var c1 = _clusterPool[1];
             secondTimer = c1.EarliestTimer();
             secondMaxTime = c1.Blades[0].MaxTime;
-            secondBladeCount = c1.Blades.Count;
+            secondBladeCount = c1.BladeCount;
         }
     }
 }
