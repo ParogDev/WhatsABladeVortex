@@ -64,4 +64,14 @@ public sealed class WhatsABladeVortexSettings : ISettings
 
     [Menu("Color: text")]
     public ColorNode TextColor { get; set; } = new(new Color(232, 234, 240, 255));
+
+    [Menu("Color: snapshot active")]
+    public ColorNode SnapshotActiveColor { get; set; } = new(new Color(106, 169, 255, 255));
+
+    [Menu("Color: snapshot ready")]
+    public ColorNode SnapshotReadyColor { get; set; } = new(new Color(200, 168, 85, 255));
+
+    // Debug
+    [Menu("Show debug window", "Show spectre, Minion Pact, and snapshot state diagnostics.")]
+    public ToggleNode ShowDebugWindow { get; set; } = new(false);
 }

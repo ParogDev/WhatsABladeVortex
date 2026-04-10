@@ -115,4 +115,33 @@ public sealed class BladeTracker
             expiresIn = warn.EarliestTimer();
         }
     }
+
+    /// <summary>
+    /// Returns the two most recent clusters' earliest-blade timers for the two-bar UI.
+    /// Clusters are sorted newest-first (highest timer), so index 0 = latest cast.
+    /// "Fall off" = earliest blade in each cluster (when the cluster starts losing blades).
+    /// </summary>
+    public void FindClusterBars(
+        out float latestTimer, out float latestMaxTime, out int latestBladeCount,
+        out float secondTimer, out float secondMaxTime, out int secondBladeCount)
+    {
+        latestTimer = 0f; latestMaxTime = 0f; latestBladeCount = 0;
+        secondTimer = 0f; secondMaxTime = 0f; secondBladeCount = 0;
+
+        if (_clusters.Count == 0) return;
+
+        // Clusters[0] is the newest (sorted by timer descending in Rebuild)
+        var c0 = _clusters[0];
+        latestTimer = c0.EarliestTimer();
+        latestMaxTime = c0.Blades[0].MaxTime;
+        latestBladeCount = c0.Blades.Count;
+
+        if (_clusters.Count >= 2)
+        {
+            var c1 = _clusters[1];
+            secondTimer = c1.EarliestTimer();
+            secondMaxTime = c1.Blades[0].MaxTime;
+            secondBladeCount = c1.Blades.Count;
+        }
+    }
 }

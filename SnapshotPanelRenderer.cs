@@ -22,14 +22,16 @@ public sealed class SnapshotPanelRenderer
     private static readonly Color GoldBright = new(242, 211, 122, 255);
     private static readonly Color GoldGlow = new(255, 243, 196, 180);
 
-    /// <summary>
-    /// Compact mode: seals pips + optional single "freshest blade" bar.
-    /// Small, unobtrusive. Each section independently toggleable.
-    /// </summary>
+    // ----------------------------------------------------------------
+    //  Compact mode: seals + two-bar snapshot (main + next expiry)
+    // ----------------------------------------------------------------
+
     public void DrawCompact(
         Graphics g, WhatsABladeVortexSettings s,
-        int sealCount, bool snapshotAlive,
-        float freshestTimer, float freshestMaxTime, int bladeCount)
+        int sealCount, SnapshotState snapshotState,
+        float latestTimer, float latestMaxTime, int latestBladeCount,
+        float secondTimer, float secondMaxTime, int secondBladeCount,
+        bool hasMinionPact, bool spectreAlive)
     {
         bool showSeals = s.ShowSeals.Value;
         bool showBar = s.ShowSnapshotBar.Value;
@@ -40,7 +42,6 @@ public sealed class SnapshotPanelRenderer
         float x = s.PanelX.Value;
         float y = s.PanelY.Value;
 
-        // Measure width from the widest row.
         int maxSeals = Math.Max(1, s.MaxSeals.Value);
         float pipSize = 12f;
         float pipGap = 5f;
@@ -54,18 +55,29 @@ public sealed class SnapshotPanelRenderer
             sealRowW = labelW + 10f + pipsW + 8f + countW;
         }
 
+        float barW = 120f;
         float barRowW = 0f;
         if (showBar)
         {
             float labelW = g.MeasureText("SNAPSHOT").X;
-            barRowW = labelW + 10f + 120f + 8f + g.MeasureText("6.4s 10").X;
+            barRowW = labelW + 10f + barW + 8f + g.MeasureText("6.4s 10").X;
         }
 
         float contentW = Math.Max(sealRowW, barRowW);
         float totalW = padX + contentW + padX;
+
+        float mainBarH = 14f;
+        float smallBarH = 6f;
+        float smallBarGap = 2f;
         float rowH = Math.Max(pipSize, 14f);
+        int totalBlades = latestBladeCount + secondBladeCount;
+        // Small bar only when 2+ actual clusters exist
+        bool showSmallBar = showBar && secondBladeCount > 0;
+
         int rows = (showSeals ? 1 : 0) + (showBar ? 1 : 0);
         float totalH = padY + rows * (rowH + 4f) - 4f + padY;
+        if (showSmallBar)
+            totalH += smallBarGap + smallBarH;
 
         var tl = new Vec2(x, y);
         var br = new Vec2(x + totalW, y + totalH);
@@ -100,44 +112,84 @@ public sealed class SnapshotPanelRenderer
             cy += rowH + 4f;
         }
 
-        // Snapshot bar row (freshest blade = when ALL stacks will have expired)
+        // Main snapshot bar
         if (showBar)
         {
             float cx = x + padX;
             g.DrawText("SNAPSHOT", new Vec2(cx, cy), s.MutedColor.Value);
             cx += g.MeasureText("SNAPSHOT").X + 10f;
 
-            float barW = 120f;
-            float barH = 12f;
             var barTL = new Vec2(cx, cy + 1f);
-            var barBR = new Vec2(cx + barW, cy + 1f + barH);
+            var barBR = new Vec2(cx + barW, cy + 1f + mainBarH);
 
             g.DrawBox(barTL, barBR, new Color(5, 7, 9, 220));
             g.DrawFrame(barTL, barBR, new Color(35, 40, 53, 160), 1);
 
-            if (snapshotAlive && freshestMaxTime > 0f)
+            bool hasBlades = latestMaxTime > 0f && latestBladeCount > 0;
+
+            if (hasBlades)
             {
-                float frac = Math.Clamp(freshestTimer / freshestMaxTime, 0f, 1f);
+                float frac = Math.Clamp(latestTimer / latestMaxTime, 0f, 1f);
                 var fillBR = new Vec2(barTL.X + barW * frac, barBR.Y);
                 g.DrawBox(barTL, fillBR, BarColor(frac, s));
-                var lbl = $"{freshestTimer:F1}s {bladeCount}";
+                var lbl = $"{latestTimer:F1}s {latestBladeCount}";
                 g.DrawText(lbl, new Vec2(barBR.X + 6f, cy), s.TextColor.Value);
             }
             else
             {
-                var lostColor = s.AlertRedHeader.Value ? s.DangerColor.Value : s.MutedColor.Value;
-                g.DrawText("LOST", new Vec2(barBR.X + 6f, cy), lostColor);
+                // State chip when no blades
+                string chipText;
+                Color chipColor;
+                switch (snapshotState)
+                {
+                    case SnapshotState.Lost:
+                        chipText = "LOST";
+                        chipColor = s.DangerColor.Value;
+                        break;
+                    case SnapshotState.Ready:
+                        chipText = "READY";
+                        chipColor = s.SnapshotReadyColor.Value;
+                        break;
+                    default:
+                        chipText = "--";
+                        chipColor = s.MutedColor.Value;
+                        break;
+                }
+                g.DrawText(chipText, new Vec2(barBR.X + 6f, cy), chipColor);
+            }
+
+            // Small bar: next cluster to expire (underneath main bar)
+            if (showSmallBar)
+            {
+                float smallY = barBR.Y + smallBarGap;
+                var sTL = new Vec2(barTL.X, smallY);
+                var sBR = new Vec2(barTL.X + barW, smallY + smallBarH);
+
+                g.DrawBox(sTL, sBR, new Color(5, 7, 9, 180));
+                g.DrawFrame(sTL, sBR, new Color(35, 40, 53, 100), 1);
+
+                if (secondMaxTime > 0f)
+                {
+                    float nFrac = Math.Clamp(secondTimer / secondMaxTime, 0f, 1f);
+                    var nFillBR = new Vec2(sTL.X + barW * nFrac, sBR.Y);
+                    var dimColor = BarColor(nFrac, s);
+                    dimColor = new Color(dimColor.R, dimColor.G, dimColor.B, (byte)(dimColor.A * 0.6f));
+                    g.DrawBox(sTL, nFillBR, dimColor);
+                }
             }
         }
     }
 
-    /// <summary>
-    /// Full panel: header, seals, blade summary, all clusters with bars, footer.
-    /// </summary>
+    // ----------------------------------------------------------------
+    //  Full panel: header, seals, minion pact info, clusters, footer
+    // ----------------------------------------------------------------
+
     public void DrawFullPanel(
         Graphics g, WhatsABladeVortexSettings s,
         BladeTracker tracker, int sealCount,
-        bool snapshotAlive, bool spectreDead)
+        SnapshotState snapshotState, bool spectreAlive,
+        bool hasMinionPact, int calculatedAddedPhys,
+        int minionPactPermillage = 0)
     {
         float panelW = s.PanelWidth.Value;
         float ox = s.PanelX.Value;
@@ -146,9 +198,14 @@ public sealed class SnapshotPanelRenderer
 
         float headerH = 34f;
         float sealRowH = s.ShowSeals.Value ? 22f : 0f;
-        float clusterH = Math.Max(60f, EstimateClustersHeight(tracker, snapshotAlive));
+        float minionPactRowH = 20f;
+        bool hasBlades = tracker.BladeCount > 0;
+        float clusterH = Math.Max(60f, EstimateClustersHeight(tracker, hasBlades));
         float footerH = 22f;
-        float totalH = pad + headerH + (s.ShowSeals.Value ? sealRowH + 6f : 0f) + 8f + clusterH + 8f + footerH + pad;
+        float totalH = pad + headerH
+            + (s.ShowSeals.Value ? sealRowH + 6f : 0f)
+            + minionPactRowH + 6f
+            + 8f + clusterH + 8f + footerH + pad;
 
         var tl = new Vec2(ox, oy);
         var br = new Vec2(ox + panelW, oy + totalH);
@@ -163,8 +220,24 @@ public sealed class SnapshotPanelRenderer
         g.DrawText("BLADE VORTEX SNAPSHOT", new Vec2(ox + pad, y), s.BorderColor.Value);
         g.DrawText("Minion Pact tracker", new Vec2(ox + pad, y + 14f), s.MutedColor.Value);
 
-        var chipText = snapshotAlive ? "SNAPSHOT ALIVE" : (s.AlertRedHeader.Value ? "SNAPSHOT LOST" : "INACTIVE");
-        var chipColor = snapshotAlive ? s.AliveColor.Value : s.DangerColor.Value;
+        string chipText;
+        Color chipColor;
+        switch (snapshotState)
+        {
+            case SnapshotState.Active:
+                chipText = "SNAPSHOT ACTIVE";
+                chipColor = s.AliveColor.Value;
+                break;
+            case SnapshotState.Lost:
+                chipText = "SNAPSHOT LOST";
+                chipColor = s.DangerColor.Value;
+                break;
+            default:
+                chipText = "READY";
+                chipColor = s.SnapshotReadyColor.Value;
+                break;
+        }
+
         var chipSz = g.MeasureText(chipText);
         float chipW = chipSz.X + 12f;
         var cTL = new Vec2(ox + panelW - pad - chipW, y + 4f);
@@ -197,10 +270,26 @@ public sealed class SnapshotPanelRenderer
             y += 6f;
         }
 
+        // Minion Pact info row
+        if (hasMinionPact)
+        {
+            var mpLabel = $"MINION PACT  +{calculatedAddedPhys:N0} phys";
+            g.DrawText(mpLabel, new Vec2(ox + pad, y + 2f), s.SnapshotActiveColor.Value);
+            var pctStr = $"{minionPactPermillage * 0.1f:F1}%";
+            g.DrawText(pctStr, new Vec2(ox + panelW - pad - g.MeasureText(pctStr).X, y + 2f), s.MutedColor.Value);
+        }
+        else
+        {
+            g.DrawText("MINION PACT  not linked", new Vec2(ox + pad, y + 2f), s.MutedColor.Value);
+        }
+        y += minionPactRowH;
+        DrawSep(g, ox + pad, ox + panelW - pad, y, s.BorderColor.Value);
+        y += 6f;
+
         // Blade summary
         int total = tracker.BladeCount;
         g.DrawText($"BLADES  {total}/10", new Vec2(ox + pad, y + 2f), s.TextColor.Value);
-        if (snapshotAlive && total > 0)
+        if (total > 0)
         {
             float e = tracker.EarliestTimer();
             var eStr = $"earliest {e:F1}s";
@@ -209,12 +298,27 @@ public sealed class SnapshotPanelRenderer
         }
         y += 18f;
 
-        // Clusters or lost state
-        if (!snapshotAlive || total == 0)
+        // Clusters or state message
+        if (total == 0)
         {
-            var msg = "ALL BLADES EXPIRED";
-            g.DrawText(msg, new Vec2(ox + (panelW - g.MeasureText(msg).X) * 0.5f, y + 10f), s.DangerColor.Value);
-            var hint = spectreDead ? "Zone to reset specter and re-snapshot." : "Cast BV to create a new snapshot.";
+            string msg;
+            string hint;
+            if (snapshotState == SnapshotState.Lost)
+            {
+                msg = "ALL BLADES EXPIRED";
+                hint = spectreAlive
+                    ? "Ready to snapshot. Cast BV to capture Minion Pact damage."
+                    : "Spectre is dead. Zone to reset and re-snapshot.";
+            }
+            else
+            {
+                msg = snapshotState == SnapshotState.Ready ? "WAITING FOR SNAPSHOT" : "NO BLADES";
+                hint = spectreAlive
+                    ? "Cast BV to sacrifice spectre and snapshot damage."
+                    : "Spectre is dead. Waiting for resurrection.";
+            }
+            g.DrawText(msg, new Vec2(ox + (panelW - g.MeasureText(msg).X) * 0.5f, y + 10f),
+                snapshotState == SnapshotState.Lost ? s.DangerColor.Value : s.SnapshotReadyColor.Value);
             g.DrawText(hint, new Vec2(ox + (panelW - g.MeasureText(hint).X) * 0.5f, y + 28f), s.MutedColor.Value);
         }
         else
@@ -232,17 +336,119 @@ public sealed class SnapshotPanelRenderer
         DrawSep(g, ox + pad, ox + panelW - pad, footerTop, s.BorderColor.Value);
         g.DrawText("NEXT LOSS", new Vec2(ox + pad, footerTop + 6f), s.MutedColor.Value);
         string fv; Color fc;
-        if (snapshotAlive && total > 0)
+        if (total > 0)
         {
             tracker.FindNextLoss(out int n, out float w);
             fv = $"{n} blades in {w:F1}s";
             fc = w < 1.5f ? s.WarnColor.Value : s.TextColor.Value;
         }
-        else { fv = "LOST"; fc = s.DangerColor.Value; }
+        else { fv = snapshotState == SnapshotState.Lost ? "LOST" : "--"; fc = s.DangerColor.Value; }
         g.DrawText(fv, new Vec2(ox + panelW - pad - g.MeasureText(fv).X, footerTop + 6f), fc);
     }
 
-    // ── Shared helpers ──
+
+    // ----------------------------------------------------------------
+    //  Debug window
+    // ----------------------------------------------------------------
+
+    public void DrawDebugWindow(
+        Graphics g, WhatsABladeVortexSettings s,
+        bool spectreFound, bool spectreAlive, int spectreMaxHp, float spectreHpPct,
+        bool hasMinionPact, int permillage, int addedPhys,
+        SnapshotState state,
+        int bladeCount, int clusterCount,
+        float latestClusterTimer, int latestClusterBladeCount,
+        float secondClusterTimer, int secondClusterBladeCount,
+        int sealCount)
+    {
+        float padX = 10f;
+        float padY = 8f;
+        float lineH = 16f;
+        int lines = 13;
+        float panelW = 320f;
+        float panelH = padY + lines * lineH + padY;
+
+        // Position to the right of the main panel
+        float ox = s.PanelX.Value + s.PanelWidth.Value + 20f;
+        float oy = s.PanelY.Value;
+
+        var tl = new Vec2(ox, oy);
+        var br = new Vec2(ox + panelW, oy + panelH);
+        g.DrawBox(tl, br, s.BackgroundColor.Value);
+        g.DrawFrame(tl, br, s.BorderColor.Value, 1);
+        DrawCornerTick(g, tl, true, s.BorderColor.Value);
+        DrawCornerTick(g, br, false, s.BorderColor.Value);
+
+        float y = oy + padY;
+        float lx = ox + padX;
+        float vx = ox + 150f;
+
+        g.DrawText("DEBUG", new Vec2(lx, y), s.BorderColor.Value);
+        y += lineH;
+
+        DrawSep(g, lx, ox + panelW - padX, y, s.BorderColor.Value);
+        y += 4f;
+
+        // Spectre section
+        DrawDebugRow(g, s, lx, vx, ref y, lineH, "Spectre found:", spectreFound ? "yes" : "no",
+            spectreFound ? s.AliveColor.Value : s.DangerColor.Value);
+
+        string spectreHpStr = spectreAlive
+            ? $"yes  ({spectreHpPct * 100f:F0}% of {spectreMaxHp:N0})"
+            : "DEAD";
+        Color spectreHpColor = spectreAlive ? s.AliveColor.Value : s.DangerColor.Value;
+        if (spectreAlive && spectreMaxHp <= 1)
+            spectreHpColor = s.WarnColor.Value; // HP not loaded yet
+        DrawDebugRow(g, s, lx, vx, ref y, lineH, "Spectre alive:",
+            spectreAlive && spectreMaxHp <= 1 ? "yes  (HP loading...)" : spectreHpStr, spectreHpColor);
+
+        DrawDebugRow(g, s, lx, vx, ref y, lineH, "Minion Pact:",
+            hasMinionPact ? $"yes  ({permillage} permil = {permillage * 0.1f:F1}%)" : "not linked",
+            hasMinionPact ? s.SnapshotActiveColor.Value : s.MutedColor.Value);
+
+        string addedStr = spectreMaxHp > 1 && addedPhys > 0
+            ? $"~{addedPhys:N0}"
+            : spectreMaxHp <= 1 ? "(need HP)" : "--";
+        DrawDebugRow(g, s, lx, vx, ref y, lineH, "Added phys:",
+            addedStr, addedPhys > 0 ? s.TextColor.Value : s.MutedColor.Value);
+
+        DrawSep(g, lx, ox + panelW - padX, y, s.BorderColor.Value);
+        y += 4f;
+
+        // State section
+        Color stateColor = state switch
+        {
+            SnapshotState.Active => s.AliveColor.Value,
+            SnapshotState.Lost => s.DangerColor.Value,
+            _ => s.SnapshotReadyColor.Value
+        };
+        DrawDebugRow(g, s, lx, vx, ref y, lineH, "Snapshot state:", state.ToString().ToUpper(), stateColor);
+
+        DrawDebugRow(g, s, lx, vx, ref y, lineH, "Blade count:", bladeCount.ToString(), s.TextColor.Value);
+        DrawDebugRow(g, s, lx, vx, ref y, lineH, "Cluster count:", clusterCount.ToString(), s.TextColor.Value);
+
+        DrawDebugRow(g, s, lx, vx, ref y, lineH, "Latest cluster:",
+            latestClusterTimer > 0f ? $"{latestClusterTimer:F1}s ({latestClusterBladeCount} blades)" : "--",
+            s.TextColor.Value);
+        DrawDebugRow(g, s, lx, vx, ref y, lineH, "2nd cluster:",
+            secondClusterTimer > 0f ? $"{secondClusterTimer:F1}s ({secondClusterBladeCount} blades)" : "--",
+            secondClusterTimer > 0f ? s.WarnColor.Value : s.MutedColor.Value);
+
+        int maxSeals = Math.Max(1, s.MaxSeals.Value);
+        DrawDebugRow(g, s, lx, vx, ref y, lineH, "Seal count:", $"{sealCount}/{maxSeals}", s.TextColor.Value);
+    }
+
+    private static void DrawDebugRow(Graphics g, WhatsABladeVortexSettings s,
+        float lx, float vx, ref float y, float lineH, string label, string value, Color valueColor)
+    {
+        g.DrawText(label, new Vec2(lx, y), s.MutedColor.Value);
+        g.DrawText(value, new Vec2(vx, y), valueColor);
+        y += lineH;
+    }
+
+    // ----------------------------------------------------------------
+    //  Shared helpers
+    // ----------------------------------------------------------------
 
     private static float EstimateClustersHeight(BladeTracker t, bool alive)
     {
