@@ -4,6 +4,7 @@ using ExileCore;
 using SharpDX;
 using Color = SharpDX.Color;
 using Graphics = ExileCore.Graphics;
+using RectangleF = SharpDX.RectangleF;
 using Vec2 = System.Numerics.Vector2;
 
 namespace WhatsABladeVortex;
@@ -40,37 +41,33 @@ public sealed class SnapshotPanelRenderer
         int maxSeals = Math.Max(1, s.MaxSeals.Value);
         float pipSize = 12f;
         float pipGap = 5f;
-
-        float sealRowW = 0f;
-        if (showSeals)
-        {
-            float labelW = g.MeasureText("UNLEASH").X;
-            float pipsW = maxSeals * (pipSize + pipGap) - pipGap;
-            float countW = g.MeasureText($"{state.SealCount}/{maxSeals}").X;
-            sealRowW = labelW + 10f + pipsW + 8f + countW;
-        }
-
         float barW = 120f;
-        float barRowW = 0f;
-        if (showBar)
-        {
-            float labelW = g.MeasureText("SNAPSHOT").X;
-            barRowW = labelW + 10f + barW + 8f + g.MeasureText("6.4s 10").X;
-        }
-
-        float contentW = Math.Max(sealRowW, barRowW);
-        float totalW = padX + contentW + padX;
-
         float mainBarH = 14f;
         float smallBarH = 6f;
         float smallBarGap = 2f;
-        float rowH = Math.Max(pipSize, 14f);
-        bool showSmallBar = showBar && state.SecondClusterBladeCount > 0;
+        float iconSz = 24f;
+        float rowGap = 4f;
 
-        int rows = (showSeals ? 1 : 0) + (showBar ? 1 : 0);
-        float totalH = padY + rows * (rowH + 4f) - 4f + padY;
-        if (showSmallBar)
-            totalH += smallBarGap + smallBarH;
+        // Content width = widest centered element
+        float pipsW = maxSeals * (pipSize + pipGap) - pipGap;
+        float contentW = Math.Max(pipsW, barW);
+        float totalW = padX + contentW + padX;
+        float centerX = x + totalW * 0.5f;
+
+        // Calculate height
+        bool hasBlades = state.BladeCount > 0;
+        bool showSmallBar = showBar && state.SecondClusterBladeCount > 0;
+        bool showLost = !hasBlades && state.SnapshotState == SnapshotState.Lost;
+        bool showZoneWarning = state.HasMinionPact && state.SnapshotState == SnapshotState.Lost && !state.SpectreAlive;
+
+        float totalH = padY;
+        if (showSeals) totalH += pipSize + rowGap;
+        totalH += iconSz + rowGap; // icon + count row always
+        if (showBar && hasBlades) totalH += mainBarH + rowGap;
+        if (showSmallBar) totalH += smallBarGap + smallBarH;
+        if (showLost) totalH += 16f + rowGap;
+        if (showZoneWarning) totalH += 14f + rowGap;
+        totalH += padY;
 
         var tl = new Vec2(x, y);
         var br = new Vec2(x + totalW, y + totalH);
@@ -81,16 +78,13 @@ public sealed class SnapshotPanelRenderer
 
         float cy = y + padY;
 
-        // Seal pips row
+        // -- Seal pips (centered, no label) --
         if (showSeals)
         {
-            float cx = x + padX;
-            g.DrawText("UNLEASH", new Vec2(cx, cy), s.MutedColor.Value);
-            cx += g.MeasureText("UNLEASH").X + 10f;
-
+            float pipStartX = centerX - pipsW * 0.5f;
             for (int i = 0; i < maxSeals; i++)
             {
-                var p1 = new Vec2(cx + i * (pipSize + pipGap), cy + 1f);
+                var p1 = new Vec2(pipStartX + i * (pipSize + pipGap), cy + 1f);
                 var p2 = new Vec2(p1.X + pipSize, p1.Y + pipSize);
                 bool filled = i < state.SealCount;
                 g.DrawBox(p1, p2, filled ? GoldBright : new Color(0, 0, 0, 180));
@@ -98,64 +92,64 @@ public sealed class SnapshotPanelRenderer
                 if (filled)
                     g.DrawBox(new Vec2(p1.X + 2f, p1.Y + 2f), new Vec2(p2.X - 2f, p2.Y - 2f), GoldGlow);
             }
-
-            float pipsEnd = cx + maxSeals * (pipSize + pipGap) - pipGap + 8f;
-            g.DrawText($"{state.SealCount}/{maxSeals}", new Vec2(pipsEnd, cy), s.TextColor.Value);
-
-            cy += rowH + 4f;
+            cy += pipSize + rowGap;
         }
 
-        // Main snapshot bar
-        if (showBar)
+        // -- Icon + total blade count (centered) --
         {
-            float cx = x + padX;
-            g.DrawText("SNAPSHOT", new Vec2(cx, cy), s.MutedColor.Value);
-            cx += g.MeasureText("SNAPSHOT").X + 10f;
+            string countStr = state.BladeCount.ToString();
+            var countSz = g.MeasureText(countStr);
 
-            var barTL = new Vec2(cx, cy + 1f);
-            var barBR = new Vec2(cx + barW, cy + 1f + mainBarH);
+            float iconX = centerX - iconSz * 0.5f;
+
+            // Draw BV skill icon as semi-transparent background
+            if (!string.IsNullOrEmpty(state.SkillIconPath))
+            {
+                g.DrawImage(state.SkillIconPath,
+                    new RectangleF(iconX, cy, iconSz, iconSz),
+                    new Color(255, 255, 255, 120));
+            }
+
+            // Count text centered on icon with shadow for readability
+            float textX = centerX - countSz.X * 0.5f;
+            float textY = cy + (iconSz - countSz.Y) * 0.5f;
+            g.DrawText(countStr, new Vec2(textX + 1f, textY + 1f), new Color(0, 0, 0, 220));
+            g.DrawText(countStr, new Vec2(textX, textY), s.TextColor.Value);
+
+            cy += iconSz + rowGap;
+        }
+
+        // -- Timer bar (centered, no label) --
+        if (showBar && hasBlades)
+        {
+            float barStartX = centerX - barW * 0.5f;
+            var barTL = new Vec2(barStartX, cy);
+            var barBR = new Vec2(barStartX + barW, cy + mainBarH);
 
             g.DrawBox(barTL, barBR, new Color(5, 7, 9, 220));
             g.DrawFrame(barTL, barBR, new Color(35, 40, 53, 160), 1);
 
-            bool hasBlades = state.LatestClusterMaxTime > 0f && state.LatestClusterBladeCount > 0;
-
-            if (hasBlades)
+            if (state.LatestClusterMaxTime > 0f)
             {
                 float frac = Math.Clamp(state.LatestClusterTimer / state.LatestClusterMaxTime, 0f, 1f);
                 var fillBR = new Vec2(barTL.X + barW * frac, barBR.Y);
                 g.DrawBox(barTL, fillBR, BarColor(frac, s));
-                var lbl = $"{state.LatestClusterTimer:F1}s {state.LatestClusterBladeCount}";
-                g.DrawText(lbl, new Vec2(barBR.X + 6f, cy), s.TextColor.Value);
-            }
-            else
-            {
-                string chipText;
-                Color chipColor;
-                switch (state.SnapshotState)
-                {
-                    case SnapshotState.Lost:
-                        chipText = "LOST";
-                        chipColor = s.DangerColor.Value;
-                        break;
-                    case SnapshotState.Ready:
-                        chipText = "READY";
-                        chipColor = s.SnapshotReadyColor.Value;
-                        break;
-                    default:
-                        chipText = "--";
-                        chipColor = s.MutedColor.Value;
-                        break;
-                }
-                g.DrawText(chipText, new Vec2(barBR.X + 6f, cy), chipColor);
             }
 
-            // Small bar: next cluster to expire (underneath main bar)
+            // Optional duration text centered below bar
+            if (s.ShowDuration.Value && state.LatestClusterTimer > 0f)
+            {
+                var durStr = $"{state.LatestClusterTimer:F1}s";
+                var durSz = g.MeasureText(durStr);
+                g.DrawText(durStr, new Vec2(centerX - durSz.X * 0.5f, barBR.Y + 1f), s.MutedColor.Value);
+            }
+
+            // Small bar: next cluster to expire
             if (showSmallBar)
             {
                 float smallY = barBR.Y + smallBarGap;
-                var sTL = new Vec2(barTL.X, smallY);
-                var sBR = new Vec2(barTL.X + barW, smallY + smallBarH);
+                var sTL = new Vec2(barStartX, smallY);
+                var sBR = new Vec2(barStartX + barW, smallY + smallBarH);
 
                 g.DrawBox(sTL, sBR, new Color(5, 7, 9, 180));
                 g.DrawFrame(sTL, sBR, new Color(35, 40, 53, 100), 1);
@@ -169,6 +163,26 @@ public sealed class SnapshotPanelRenderer
                     g.DrawBox(sTL, nFillBR, dimColor);
                 }
             }
+
+            cy += mainBarH + rowGap;
+            if (showSmallBar) cy += smallBarGap + smallBarH;
+        }
+
+        // -- LOST state (centered) --
+        if (showLost)
+        {
+            string lostText = "LOST";
+            var lostSz = g.MeasureText(lostText);
+            g.DrawText(lostText, new Vec2(centerX - lostSz.X * 0.5f, cy), s.DangerColor.Value);
+            cy += 16f + rowGap;
+        }
+
+        // -- Minion pact zone warning (centered) --
+        if (showZoneWarning)
+        {
+            string warn = "ZONE";
+            var warnSz = g.MeasureText(warn);
+            g.DrawText(warn, new Vec2(centerX - warnSz.X * 0.5f, cy), s.DangerColor.Value);
         }
     }
 
@@ -208,31 +222,30 @@ public sealed class SnapshotPanelRenderer
         g.DrawText("BLADE VORTEX SNAPSHOT", new Vec2(ox + pad, y), s.BorderColor.Value);
         g.DrawText("Minion Pact tracker", new Vec2(ox + pad, y + 14f), s.MutedColor.Value);
 
-        string chipText;
-        Color chipColor;
-        switch (state.SnapshotState)
+        // State chip (Active/Lost only, no Ready)
+        if (state.SnapshotState != SnapshotState.Ready)
         {
-            case SnapshotState.Active:
+            string chipText;
+            Color chipColor;
+            if (state.SnapshotState == SnapshotState.Active)
+            {
                 chipText = "SNAPSHOT ACTIVE";
                 chipColor = s.AliveColor.Value;
-                break;
-            case SnapshotState.Lost:
+            }
+            else
+            {
                 chipText = "SNAPSHOT LOST";
                 chipColor = s.DangerColor.Value;
-                break;
-            default:
-                chipText = "READY";
-                chipColor = s.SnapshotReadyColor.Value;
-                break;
-        }
+            }
 
-        var chipSz = g.MeasureText(chipText);
-        float chipW = chipSz.X + 12f;
-        var cTL = new Vec2(ox + panelW - pad - chipW, y + 4f);
-        var cBR = new Vec2(cTL.X + chipW, cTL.Y + 18f);
-        g.DrawBox(cTL, cBR, new Color(0, 0, 0, 140));
-        g.DrawFrame(cTL, cBR, chipColor, 1);
-        g.DrawText(chipText, new Vec2(cTL.X + 6f, cTL.Y + 2f), chipColor);
+            var chipSz = g.MeasureText(chipText);
+            float chipW = chipSz.X + 12f;
+            var cTL = new Vec2(ox + panelW - pad - chipW, y + 4f);
+            var cBR = new Vec2(cTL.X + chipW, cTL.Y + 18f);
+            g.DrawBox(cTL, cBR, new Color(0, 0, 0, 140));
+            g.DrawFrame(cTL, cBR, chipColor, 1);
+            g.DrawText(chipText, new Vec2(cTL.X + 6f, cTL.Y + 2f), chipColor);
+        }
 
         y += headerH;
         DrawSep(g, ox + pad, ox + panelW - pad, y, s.BorderColor.Value);
@@ -289,25 +302,17 @@ public sealed class SnapshotPanelRenderer
         // Clusters or state message
         if (total == 0)
         {
-            string msg;
-            string hint;
             if (state.SnapshotState == SnapshotState.Lost)
             {
-                msg = "ALL BLADES EXPIRED";
-                hint = state.SpectreAlive
-                    ? "Ready to snapshot. Cast BV to capture Minion Pact damage."
-                    : "Spectre is dead. Zone to reset and re-snapshot.";
+                string msg = "ALL BLADES EXPIRED";
+                g.DrawText(msg, new Vec2(ox + (panelW - g.MeasureText(msg).X) * 0.5f, y + 10f), s.DangerColor.Value);
+
+                if (state.HasMinionPact && !state.SpectreAlive)
+                {
+                    string hint = "Zone to reset spectre and re-snapshot.";
+                    g.DrawText(hint, new Vec2(ox + (panelW - g.MeasureText(hint).X) * 0.5f, y + 28f), s.MutedColor.Value);
+                }
             }
-            else
-            {
-                msg = state.SnapshotState == SnapshotState.Ready ? "WAITING FOR SNAPSHOT" : "NO BLADES";
-                hint = state.SpectreAlive
-                    ? "Cast BV to sacrifice spectre and snapshot damage."
-                    : "Spectre is dead. Waiting for resurrection.";
-            }
-            g.DrawText(msg, new Vec2(ox + (panelW - g.MeasureText(msg).X) * 0.5f, y + 10f),
-                state.SnapshotState == SnapshotState.Lost ? s.DangerColor.Value : s.SnapshotReadyColor.Value);
-            g.DrawText(hint, new Vec2(ox + (panelW - g.MeasureText(hint).X) * 0.5f, y + 28f), s.MutedColor.Value);
         }
         else
         {

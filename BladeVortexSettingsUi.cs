@@ -1,5 +1,7 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
+using System.IO;
 using System.Numerics;
 using ExileCore;
 using ExileCore.Shared.Nodes;
@@ -18,7 +20,9 @@ public sealed class BladeVortexSettingsUi
     private int _activeTab;
     private readonly Dictionary<string, float> _anims = new();
 
-    private static readonly string[] Tabs = { "Overlay", "Colors", "Debug" };
+    private string _soundsDirectory = "";
+
+    private static readonly string[] Tabs = { "Overlay", "Debug" };
 
     // -- Palette --
     private static uint Accent => Col(0.42f, 0.66f, 1f);      // blue
@@ -96,11 +100,12 @@ public sealed class BladeVortexSettingsUi
         float cx = cMin.X + cSz.X * 0.50f;
         float sw = cSz.X * 0.40f;
 
+        _soundsDirectory = state?.SoundsDirectory ?? "";
+
         switch (_activeTab)
         {
             case 0: TabOverlay(cdl, s, x, cx, ref y, sw); break;
-            case 1: TabColors(cdl, s, x, cx, ref y); break;
-            case 2: TabDebug(cdl, s, x, cx, ref y, state); break;
+            case 1: TabDebug(cdl, s, x, cx, ref y, state); break;
         }
 
         ImGui.SetCursorScreenPos(new Vector2(x, y));
@@ -165,6 +170,8 @@ public sealed class BladeVortexSettingsUi
             "Show Snapshot Bar", "Show a bar tracking when stacks expire");
         Toggle("bv_full", s.ShowFullPanel, dl, x, cx, ref y,
             "Full Cluster Panel", "Show all clusters with per-blade bars");
+        Toggle("bv_dur", s.ShowDuration, dl, x, cx, ref y,
+            "Show Duration", "Show remaining time for the oldest blade cluster");
 
         SectionHeader(dl, x, ref y, "Unleash");
         IntSlider("bv_maxseals", s.MaxSeals, dl, x, cx, ref y, sw,
@@ -185,34 +192,26 @@ public sealed class BladeVortexSettingsUi
             "Edge Flash", "Decaying red border flash when all blades expire");
         Toggle("bv_redhdr", s.AlertRedHeader, dl, x, cx, ref y,
             "Red Header", "Flip the header to red SNAPSHOT LOST text");
-    }
 
-    private void TabColors(ImDrawListPtr dl, WhatsABladeVortexSettings s,
-        float x, float cx, ref float y)
-    {
-        SectionHeader(dl, x, ref y, "Panel Colors");
-        ColorPicker("bv_cborder", s.BorderColor, dl, x, cx, ref y,
-            "Border", "Panel border color");
-        ColorPicker("bv_cbg", s.BackgroundColor, dl, x, cx, ref y,
-            "Background", "Panel background color");
-        ColorPicker("bv_ctext", s.TextColor, dl, x, cx, ref y,
-            "Text", "Primary text color");
-        ColorPicker("bv_cmuted", s.MutedColor, dl, x, cx, ref y,
-            "Muted", "Secondary/label text color");
+        SectionHeader(dl, x, ref y, "Sound");
+        Toggle("bv_sfx", s.AlertSound, dl, x, cx, ref y,
+            "Sound Alert", "Play a .wav when all blades expire");
+        TextInput("bv_sfxfile", s.SoundFile, dl, x, cx, ref y, sw,
+            "Sound File", "Wav file name (without extension) in Sounds/");
 
-        SectionHeader(dl, x, ref y, "State Colors");
-        ColorPicker("bv_calive", s.AliveColor, dl, x, cx, ref y,
-            "Alive", "Bar color when blade has time remaining");
-        ColorPicker("bv_cwarn", s.WarnColor, dl, x, cx, ref y,
-            "Warn", "Bar color when blade is expiring");
-        ColorPicker("bv_cdanger", s.DangerColor, dl, x, cx, ref y,
-            "Danger", "Bar color when blade is nearly expired");
-
-        SectionHeader(dl, x, ref y, "Snapshot Colors");
-        ColorPicker("bv_cactive", s.SnapshotActiveColor, dl, x, cx, ref y,
-            "Snapshot Active", "Color for active snapshot state");
-        ColorPicker("bv_cready", s.SnapshotReadyColor, dl, x, cx, ref y,
-            "Snapshot Ready", "Color for ready-to-snapshot state");
+        dl.AddText(new Vector2(x + 6, y + 1), Label, "Sounds Folder");
+        dl.AddText(new Vector2(x + 6, y + 16), Desc, "Open PoeHelper/Sounds/ in Explorer");
+        ImGui.SetCursorScreenPos(new Vector2(cx, y + 3));
+        if (ImGui.Button("Open Folder##bv_opensfx"))
+        {
+            if (!string.IsNullOrEmpty(_soundsDirectory))
+            {
+                if (!Directory.Exists(_soundsDirectory))
+                    Directory.CreateDirectory(_soundsDirectory);
+                Process.Start("explorer.exe", _soundsDirectory);
+            }
+        }
+        y += Row;
     }
 
     private void TabDebug(ImDrawListPtr dl, WhatsABladeVortexSettings s,
@@ -324,6 +323,19 @@ public sealed class BladeVortexSettingsUi
         if (SliderInt($"##{key}", ref v, node.Min, node.Max, sw))
             node.Value = v;
         dl.AddText(new Vector2(cx + sw + 6, y + 7), Accent, v.ToString());
+        y += Row;
+    }
+
+    private void TextInput(string key, TextNode node, ImDrawListPtr dl,
+        float x, float cx, ref float y, float sw, string label, string desc)
+    {
+        dl.AddText(new Vector2(x + 6, y + 1), Label, label);
+        dl.AddText(new Vector2(x + 6, y + 16), Desc, desc);
+        ImGui.SetCursorScreenPos(new Vector2(cx, y + 3));
+        var buf = node.Value ?? "";
+        ImGui.SetNextItemWidth(sw);
+        if (ImGui.InputText($"##{key}", ref buf, 256))
+            node.Value = buf;
         y += Row;
     }
 

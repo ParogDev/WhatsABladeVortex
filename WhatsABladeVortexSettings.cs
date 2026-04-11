@@ -29,6 +29,9 @@ public sealed class WhatsABladeVortexSettings : ISettings
     [Menu("Cluster window (ms)", "Blades spawned within this window are grouped into the same cast cluster.", 105, 100)]
     public RangeNode<int> ClusterWindowMs { get; set; } = new(150, 30, 600);
 
+    [Menu("Show duration", "Show remaining time for the oldest blade cluster.", 106, 100)]
+    public ToggleNode ShowDuration { get; set; } = new(false);
+
     // -- Position --
     [Menu("Position", 200)]
     public EmptyNode PositionHeader { get; set; }

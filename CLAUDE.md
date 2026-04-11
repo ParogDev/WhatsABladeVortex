@@ -13,6 +13,9 @@ Tracks Blade Vortex blades via player buffs and visualizes the Minion Pact snaps
 - Spectre tracking: alive state determined by absence of `number_of_orb_spectres` buff (buff present = dead spectre). HP read from `raise_spectre` skill's `DeployedObjects` when alive.
 - Minion Pact detection: reads `SupportMinionPactSacrificeNearbyDamageableMinionToGainPermillageOfMaxLifeAsPhysicalDamage` stat from the `blade_vortex` ActorSkill. Calculates added physical damage as `spectreMaxHp * permillage / 1000`.
 - Unleash seal meter: reads `anticipation` buff's `BuffCharges`. Purely informational -- not BV stacks.
+- Skill icon: reads `EffectsPerLevel.SkillGemWrapper.ActiveSkill.Icon` from the `blade_vortex` ActorSkill. Cached on render state and drawn as semi-transparent background behind the blade count.
+- Sound alert: plays `snapshot_lost.wav` via `GameController.SoundController.PlaySound()` when snapshot transitions to Lost. Configurable sound file and toggle in settings.
+- Minion Pact zone warning: with Minion Pact, builds typically run one spectre for maximum minion life stacking. Once the spectre dies and blades expire (snapshot lost), the ONLY way to recover the snapshot is to zone (spectre revives on zone change). The compact panel shows "ZONE" in red when this state is detected.
 - Render state DTO: all Tick data is packed into a `BladeVortexRenderState` object, passed to both the overlay renderer and the custom settings UI.
 - AreaChange clears all tracked state. Grace period guard skips Tick processing. Plugin sends no input.
 
@@ -29,10 +32,8 @@ Follows the established plugin pattern (`/buff-tracker`, `/player-monitor` skill
 - `WhatsABladeVortex.cs` -- main plugin. Tick (buff read, cluster rebuild, state machine), Render (calls renderer + edge flash), DrawSettings, AreaChange.
 - `BladeTracker.cs` -- `BladeInfo`, `BladeCluster`, `BladeTracker` with object-pooled Rebuild, FindClusterBars, FindNextLoss.
 - `SnapshotPanelRenderer.cs` -- pure draw of overlay panel. Accepts `BladeVortexRenderState` DTO. DrawCompact (seals + bars), DrawFullPanel (header, clusters, footer), DrawDebugWindow.
-- `BladeVortexSettingsUi.cs` -- custom ImGui settings panel with tabbed layout (Overlay, Colors, Debug), pill toggles, sliders, color pickers, live state status bar.
-- `WhatsABladeVortexSettings.cs` -- all settings with `[Menu]` parentIndex hierarchy: Display, Position, Alerts, Colors, Debug.
-- `design/mock.html` -- frontend-design HTML reference showing alive and lost states.
-- `Sounds/` -- drop your `snapshot_lost.wav` here.
+- `BladeVortexSettingsUi.cs` -- custom ImGui settings panel with tabbed layout (Overlay, Debug), pill toggles, sliders, text inputs, sound folder button, live state status bar.
+- `WhatsABladeVortexSettings.cs` -- all settings with `[Menu]` parentIndex hierarchy: Display, Position, Alerts, Sound, Debug.
 
 ## Gotchas
 
@@ -46,8 +47,9 @@ Follows the established plugin pattern (`/buff-tracker`, `/player-monitor` skill
 ## Verification
 
 1. Restart the HUD after building (no auto-recompile).
-2. Open plugin settings panel -- should show tabbed UI with Overlay/Colors/Debug tabs and live status bar.
+2. Open plugin settings panel -- should show tabbed UI with Overlay/Debug tabs, live status bar, and Sound section.
 3. Enter a map with at least one Raise Spectre minion alive.
-4. Cast BV once -> panel should show blades in a cluster, snapshot state transitions correctly.
-5. Let blades expire -> panel flips to LOST state, red edge flash decays.
+4. Cast BV once -> compact panel should show centered seal pips, BV icon with total blade count, and timer bar.
+5. Let blades expire -> panel shows LOST text, plays sound alert. If Minion Pact + spectre dead, shows "ZONE" warning.
 6. Settings tab live data should update in real-time (blade count, seal count, spectre status, Minion Pact info).
+7. "Open Folder" button in Sound section should open PoeHelper/Sounds/ in Explorer.

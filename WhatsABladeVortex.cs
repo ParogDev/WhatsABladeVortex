@@ -51,6 +51,12 @@ public sealed class BladeVortexRenderState
     // Blade totals
     public int BladeCount;
 
+    // Skill icon
+    public string? SkillIconPath;
+
+    // Sounds directory (for settings UI)
+    public string SoundsDirectory = "";
+
     // Tracker reference (for full panel cluster iteration)
     public BladeTracker Tracker = null!;
 }
@@ -78,6 +84,12 @@ public sealed class WhatsABladeVortex : BaseSettingsPlugin<WhatsABladeVortexSett
     public override bool Initialise()
     {
         Name = "Whats A Blade Vortex";
+
+        var soundsDir = Path.GetFullPath(Path.Combine(DirectoryFullName, "..", "..", "..", "Sounds"));
+        if (!Directory.Exists(soundsDir))
+            Directory.CreateDirectory(soundsDir);
+        _renderState.SoundsDirectory = soundsDir;
+
         return true;
     }
 
@@ -160,6 +172,9 @@ public sealed class WhatsABladeVortex : BaseSettingsPlugin<WhatsABladeVortexSett
             minionPactPermillage = bvSkill?.GetStat(
                 GameStat.SupportMinionPactSacrificeNearbyDamageableMinionToGainPermillageOfMaxLifeAsPhysicalDamage) ?? 0;
             hasMinionPact = minionPactPermillage > 0;
+
+            try { _renderState.SkillIconPath = bvSkill?.EffectsPerLevel?.SkillGemWrapper?.ActiveSkill?.Icon; }
+            catch { _renderState.SkillIconPath = null; }
 
             spectreAlive = !hasDeadSpectreBuff;
 
