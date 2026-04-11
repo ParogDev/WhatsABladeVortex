@@ -45,7 +45,7 @@ public sealed class SnapshotPanelRenderer
         float mainBarH = 14f;
         float smallBarH = 6f;
         float smallBarGap = 2f;
-        float iconSz = 24f;
+        float iconSz = 48f;
         float rowGap = 4f;
 
         // Content width = widest centered element
