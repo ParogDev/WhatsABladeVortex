@@ -74,6 +74,10 @@ public sealed class WhatsABladeVortex : BaseSettingsPlugin<WhatsABladeVortexSett
     private int _spectreMaxHp;
     private DateTime _snapshotLostAt = DateTime.MinValue;
 
+    // Icon
+    private const string BvIconFile = "bv_icon.png";
+    private bool _iconLoaded;
+
     // Render guards
     private bool _canRender;
     private bool _inGracePeriod;
@@ -89,6 +93,15 @@ public sealed class WhatsABladeVortex : BaseSettingsPlugin<WhatsABladeVortexSett
         if (!Directory.Exists(soundsDir))
             Directory.CreateDirectory(soundsDir);
         _renderState.SoundsDirectory = soundsDir;
+
+        // Pre-load BV skill icon (shipped as bv_icon.png in plugin dir)
+        var iconPath = Path.Combine(DirectoryFullName, BvIconFile);
+        if (File.Exists(iconPath))
+        {
+            Graphics.InitImage(BvIconFile, iconPath);
+            _iconLoaded = true;
+            _renderState.SkillIconPath = BvIconFile;
+        }
 
         return true;
     }
@@ -172,9 +185,6 @@ public sealed class WhatsABladeVortex : BaseSettingsPlugin<WhatsABladeVortexSett
             minionPactPermillage = bvSkill?.GetStat(
                 GameStat.SupportMinionPactSacrificeNearbyDamageableMinionToGainPermillageOfMaxLifeAsPhysicalDamage) ?? 0;
             hasMinionPact = minionPactPermillage > 0;
-
-            try { _renderState.SkillIconPath = bvSkill?.EffectsPerLevel?.SkillGemWrapper?.ActiveSkill?.Icon; }
-            catch { _renderState.SkillIconPath = null; }
 
             spectreAlive = !hasDeadSpectreBuff;
 
