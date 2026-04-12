@@ -21,6 +21,7 @@ public sealed class BladeVortexSettingsUi
     private readonly Dictionary<string, float> _anims = new();
 
     private string _soundsDirectory = "";
+    private Action? _playTestSound;
 
     private static readonly string[] Tabs = { "Overlay", "Debug" };
 
@@ -101,6 +102,7 @@ public sealed class BladeVortexSettingsUi
         float sw = cSz.X * 0.40f;
 
         _soundsDirectory = state?.SoundsDirectory ?? "";
+        _playTestSound = state?.PlayTestSound;
 
         switch (_activeTab)
         {
@@ -196,12 +198,17 @@ public sealed class BladeVortexSettingsUi
         SectionHeader(dl, x, ref y, "Sound");
         Toggle("bv_sfx", s.AlertSound, dl, x, cx, ref y,
             "Sound Alert", "Play a .wav when all blades expire");
+        IntSlider("bv_vol", s.SoundVolume, dl, x, cx, ref y, sw,
+            "Volume %", "Sound volume (0 = mute, 100 = full)");
         TextInput("bv_sfxfile", s.SoundFile, dl, x, cx, ref y, sw,
             "Sound File", "Wav file name (without extension) in Sounds/");
 
-        dl.AddText(new Vector2(x + 6, y + 1), Label, "Sounds Folder");
-        dl.AddText(new Vector2(x + 6, y + 16), Desc, "Open PoeHelper/Sounds/ in Explorer");
+        dl.AddText(new Vector2(x + 6, y + 1), Label, "Test Sound");
+        dl.AddText(new Vector2(x + 6, y + 16), Desc, "Play the configured sound at current volume");
         ImGui.SetCursorScreenPos(new Vector2(cx, y + 3));
+        if (ImGui.Button("Test##bv_testsfx"))
+            _playTestSound?.Invoke();
+        ImGui.SameLine();
         if (ImGui.Button("Open Folder##bv_opensfx"))
         {
             if (!string.IsNullOrEmpty(_soundsDirectory))

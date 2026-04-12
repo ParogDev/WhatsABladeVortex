@@ -58,7 +58,10 @@ public sealed class WhatsABladeVortexSettings : ISettings
     [Menu("Snapshot-lost: sound alert", "Play a .wav sound when all blades expire.", 303, 300)]
     public ToggleNode AlertSound { get; set; } = new(true);
 
-    [Menu("Sound file", "Wav file in PoeHelper/Sounds/ (without extension).", 304, 300)]
+    [Menu("Sound volume %", "Volume for the snapshot-lost sound (0-100).", 304, 300)]
+    public RangeNode<int> SoundVolume { get; set; } = new(80, 0, 100);
+
+    [Menu("Sound file", "Wav file in PoeHelper/Sounds/ (without extension).", 305, 300)]
     public TextNode SoundFile { get; set; } = new("snapshot_lost");
 
     // -- Colors --

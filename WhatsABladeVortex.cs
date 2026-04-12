@@ -57,6 +57,9 @@ public sealed class BladeVortexRenderState
     // Sounds directory (for settings UI)
     public string SoundsDirectory = "";
 
+    // Callback for test-sound button in settings UI
+    public Action? PlayTestSound;
+
     // Tracker reference (for full panel cluster iteration)
     public BladeTracker Tracker = null!;
 }
@@ -93,6 +96,7 @@ public sealed class WhatsABladeVortex : BaseSettingsPlugin<WhatsABladeVortexSett
         if (!Directory.Exists(soundsDir))
             Directory.CreateDirectory(soundsDir);
         _renderState.SoundsDirectory = soundsDir;
+        _renderState.PlayTestSound = TryPlaySnapshotLostSound;
 
         // Pre-load BV skill icon (shipped as bv_icon.png in plugin dir)
         var iconPath = Path.Combine(DirectoryFullName, BvIconFile);
@@ -315,7 +319,8 @@ public sealed class WhatsABladeVortex : BaseSettingsPlugin<WhatsABladeVortexSett
             return;
 
         var soundPath = Path.Combine("..", "Sounds", name).Replace('\\', '/');
-        GameController.SoundController.PlaySound(soundPath);
+        float volume = Settings.SoundVolume.Value / 100f;
+        GameController.SoundController.PlaySound(soundPath, volume);
     }
 
     private void DrawEdgeFlash(float intensity)
