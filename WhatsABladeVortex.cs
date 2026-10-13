@@ -302,7 +302,7 @@ public sealed class WhatsABladeVortex : BaseSettingsPlugin<WhatsABladeVortexSett
     public override void DrawSettings()
     {
         _settingsUi ??= new BladeVortexSettingsUi();
-        _settingsUi.Draw(Settings, Graphics, _renderState);
+        _settingsUi.Draw(Settings, _renderState);
     }
 
     private void TryPlaySnapshotLostSound()

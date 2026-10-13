@@ -25,15 +25,15 @@ Follows the established plugin pattern (`/buff-tracker`, `/player-monitor` skill
 
 1. **Tick()** -- reads all components (Buffs, Actor, Life on deployed minions), rebuilds blade clusters, runs snapshot state machine, builds `BladeVortexRenderState` DTO. No drawing.
 2. **Render()** -- delegates to `SnapshotPanelRenderer` using cached render state. No component access.
-3. **DrawSettings()** -- delegates to `BladeVortexSettingsUi` for custom ImGui settings panel with live data display.
+3. **DrawSettings()** -- delegates to `BladeVortexSettingsUi`, which draws `SettingsMenu` (SettingsMenu.cs, copied from the scaffolding new-plugin template) from the [Menu] headers/rows, plus a live status strip, Sound test buttons and a live Debug tab.
 
 ## Files
 
 - `WhatsABladeVortex.cs` -- main plugin. Tick (buff read, cluster rebuild, state machine), Render (calls renderer + edge flash), DrawSettings, AreaChange.
 - `BladeTracker.cs` -- `BladeInfo`, `BladeCluster`, `BladeTracker` with object-pooled Rebuild, FindClusterBars, FindNextLoss.
 - `SnapshotPanelRenderer.cs` -- pure draw of overlay panel. Accepts `BladeVortexRenderState` DTO. DrawCompact (seals + bars), DrawFullPanel (header, clusters, footer), DrawDebugWindow.
-- `BladeVortexSettingsUi.cs` -- custom ImGui settings panel with tabbed layout (Overlay, Debug), pill toggles, sliders, text inputs, sound folder button, live state status bar.
-- `WhatsABladeVortexSettings.cs` -- all settings with `[Menu]` parentIndex hierarchy: Display, Position, Alerts, Sound, Debug.
+- `BladeVortexSettingsUi.cs` -- wires `SettingsMenu.cs` (generated Overlay tab incl. colours) + hand-drawn live parts (status strip, Sound test / Open folder, Debug tab).
+- `WhatsABladeVortexSettings.cs` -- all settings with `[Menu]` parentIndex hierarchy (flat, so saved settings keep loading): Display, Position, Colors, Debug, Alerts (last, so the Sound test buttons sit under it).
 
 ## Gotchas
 
@@ -47,7 +47,7 @@ Follows the established plugin pattern (`/buff-tracker`, `/player-monitor` skill
 ## Verification
 
 1. Restart the HUD after building (no auto-recompile).
-2. Open plugin settings panel -- should show tabbed UI with Overlay/Debug tabs, live status bar, and Sound section.
+2. Open plugin settings panel -- should show Overlay/Debug tabs, live status strip, and Test sound / Open Sounds folder under Alerts.
 3. Enter a map with at least one Raise Spectre minion alive.
 4. Cast BV once -> compact panel should show centered seal pips, BV icon with total blade count, and timer bar.
 5. Let blades expire -> panel shows LOST text, plays sound alert. If Minion Pact + spectre dead, shows "ZONE" warning.
