@@ -51,5 +51,5 @@ Follows the established plugin pattern (`/buff-tracker`, `/player-monitor` skill
 3. Enter a map with at least one Raise Spectre minion alive.
 4. Cast BV once -> compact panel should show centered seal pips, BV icon with total blade count, and timer bar.
 5. Let blades expire -> panel shows LOST text, plays sound alert. If Minion Pact + spectre dead, shows "ZONE" warning.
-6. Settings tab live data should update in real-time (blade count, seal count, spectre status, Minion Pact info).
+6. Live data should update in real-time: the status strip above the tabs (snapshot, blades, seals, spectre) and the Debug tab (clusters, spectre HP, Minion Pact).
 7. "Open Folder" button in Sound section should open PoeHelper/Sounds/ in Explorer.

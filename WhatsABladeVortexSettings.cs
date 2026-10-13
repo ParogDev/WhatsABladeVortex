@@ -90,7 +90,8 @@ public sealed class WhatsABladeVortexSettings : ISettings
     [Menu("Show debug window", "Show spectre, Minion Pact, and snapshot state diagnostics.", 501, 500)]
     public ToggleNode ShowDebugWindow { get; set; } = new(false);
 
-    // -- Alerts -- (last, so the Sound test buttons drawn after the settings sit right under them)
+    // -- Alerts -- KEEP THIS SECTION LAST: BladeVortexSettingsUi draws the Sound test / Open Sounds folder buttons
+    // after the generated rows (SettingsMenu.Tab("Overlay", ...)), so they sit under Alerts only while nothing follows it.
     [Menu("Alerts", "What happens when the snapshot is lost (all blades expired)", 300)]
     public EmptyNode AlertsHeader { get; set; } = new();
 
